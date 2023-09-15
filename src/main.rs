@@ -33,6 +33,8 @@ fn exec_say_hello(args: &HelloArgs) {
 fn alternative_exec_say_hello(args: &HelloArgs) {
     println!(
         "Hello, {}!",
+        // .as_ref() converts &Option<T> to Option<&T>. .map_or will return the first parameter if the value isn't present
+        //   and transform the contained value via the provided function if it is present and return that.
         args.name.as_ref().map_or("world", |name| name.as_str())
     );
 }
