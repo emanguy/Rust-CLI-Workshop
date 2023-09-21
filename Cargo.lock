@@ -134,7 +134,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "get-outline"
+name = "get_outline"
 version = "0.1.0"
 dependencies = [
  "clap",
