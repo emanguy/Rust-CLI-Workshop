@@ -22,7 +22,7 @@ impl Default for ListRequest {
 
 /// A listed document entry, used when trying to find documents that currently exist in GetOutline
 #[derive(Deserialize)]
-pub struct Listed {
+pub struct ListEntry {
     /// The unique ID of the document
     pub id: String,
     /// The document's title, as seen in GetOutline
@@ -30,7 +30,7 @@ pub struct Listed {
 }
 
 /// Fetch a list of documents available to the current user in GetOutline
-pub fn list(client: &BlockingClient, request: &ListRequest) -> Result<Vec<Listed>, APIError> {
+pub fn list(client: &BlockingClient, request: &ListRequest) -> Result<Vec<ListEntry>, APIError> {
     let http_response = client.post("https://app.getoutline.com/api/documents.list")
         .json(request)
         .send()
@@ -38,7 +38,7 @@ pub fn list(client: &BlockingClient, request: &ListRequest) -> Result<Vec<Listed
         .error_for_status()
         .map_err(|err| APIError::failed_trying_to("list documents in GetOutline (bad status)", err))?;
 
-    let document_envelope: DataEnvelope<Vec<Listed>> = http_response.json().map_err(|err| APIError::failed_trying_to("read list of documents in GetOutline", err))?;
+    let document_envelope: DataEnvelope<Vec<ListEntry>> = http_response.json().map_err(|err| APIError::failed_trying_to("read list of documents in GetOutline", err))?;
 
     Ok(document_envelope.data)
 }
