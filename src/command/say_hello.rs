@@ -14,4 +14,3 @@ pub(super) fn exec_say_hello(args: &HelloArgs) {
         None => println!("Hello, world!"),
     }
 }
-

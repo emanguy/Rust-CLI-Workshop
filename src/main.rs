@@ -1,7 +1,8 @@
+use crate::command::{exec_command, CLIArgs};
 use clap::Parser;
-use crate::command::{CLIArgs, exec_command};
 
 mod command;
+mod getoutline_connection;
 
 fn main() {
     // Parse the CLI arguments via clap
