@@ -1,6 +1,6 @@
-use serde::Deserialize;
-use reqwest::blocking::Client as BlockingClient;
 use crate::getoutline_connection::{APIError, DataEnvelope};
+use reqwest::blocking::Client as BlockingClient;
+use serde::Deserialize;
 
 /// Information about the currently authenticated user
 #[derive(Deserialize)]
@@ -17,7 +17,8 @@ pub struct AuthInfo {
 
 /// Retrieve information about the currently authenticated user
 pub fn current(client: &BlockingClient) -> Result<AuthInfo, APIError> {
-    let http_response = client.post("https://app.getoutline.com/api/auth.info")
+    let http_response = client
+        .post("https://app.getoutline.com/api/auth.info")
         .send()
         .map_err(|err| APIError::failed_trying_to("get authentication data (send failure)", err))?
         .error_for_status()

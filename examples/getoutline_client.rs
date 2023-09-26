@@ -1,6 +1,6 @@
-use std::env;
 use dotenvy::dotenv;
 use get_outline::getoutline_connection::{auth, documents, get_http_client};
+use std::env;
 
 fn main() {
     let _ = dotenv();
@@ -26,7 +26,10 @@ fn main() {
         }
     };
 
-    println!("Currently authenticated as {} with user ID {}!", auth_info.user.name, auth_info.user.id);
+    println!(
+        "Currently authenticated as {} with user ID {}!",
+        auth_info.user.name, auth_info.user.id
+    );
 
     let documents_request = documents::ListRequest::default();
     let some_documents = match documents::list(&http_client, &documents_request) {
@@ -40,6 +43,10 @@ fn main() {
 
     println!("Retrieved documents:");
     for document in some_documents.iter() {
-        println!("\t - {title} ({id})", title=document.title, id=document.id);
+        println!(
+            "\t - {title} ({id})",
+            title = document.title,
+            id = document.id
+        );
     }
 }

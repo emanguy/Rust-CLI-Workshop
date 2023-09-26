@@ -3,6 +3,7 @@ use clap::Parser;
 
 mod command;
 mod getoutline_connection;
+mod logic;
 
 fn main() {
     // Parse the CLI arguments via clap

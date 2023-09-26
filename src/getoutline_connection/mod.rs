@@ -1,6 +1,6 @@
 use anyhow::Context;
-use reqwest::{header, blocking::Client as BlockingClient};
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::{blocking::Client as BlockingClient, header};
 
 use serde::Deserialize;
 use thiserror::Error;
