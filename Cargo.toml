@@ -14,11 +14,11 @@ bench = false
 [dependencies]
 anyhow = "1.0.75"
 clap = { version = "4.4.3", features = ["derive", "wrap_help"] }
+dotenvy = "0.15.7"
 mockall = "0.11.4"
 reqwest = { version = "0.11.20", features = ["rustls-tls", "blocking", "json"], default-features = false }
 serde = { version = "1.0.188", features = ["derive"] }
 thiserror = "1.0.48"
 
 [dev-dependencies]
-dotenvy = "0.15.7"
 speculoos = "0.11.0"

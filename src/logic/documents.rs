@@ -4,9 +4,19 @@ use thiserror::Error;
 
 /// Options for listing a page of documents
 pub struct ListOptions {
-    page: u32,
-    results_per_page: u32,
-    own_documents_only: bool,
+    pub page: u32,
+    pub results_per_page: u32,
+    pub own_documents_only: bool,
+}
+
+impl Default for ListOptions {
+    fn default() -> Self {
+        ListOptions {
+            page: 0,
+            results_per_page: 15,
+            own_documents_only: false,
+        }
+    }
 }
 
 /// Entry in the document list

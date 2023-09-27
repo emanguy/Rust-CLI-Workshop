@@ -1,5 +1,8 @@
 use crate::getoutline_connection::{APIError, DataEnvelope};
+use crate::logic;
+use crate::logic::documents::{DocumentReader, ReaderListError, ReaderListOptions};
 use reqwest::blocking::Client as BlockingClient;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
 /// Request for a list of documents, including pagination information
@@ -24,6 +27,16 @@ impl Default for ListRequest {
     }
 }
 
+impl From<&ReaderListOptions> for ListRequest {
+    fn from(value: &ReaderListOptions) -> Self {
+        ListRequest {
+            offset: value.offset,
+            limit: value.limit,
+            user: value.user.clone(),
+        }
+    }
+}
+
 /// A listed document entry, used when trying to find documents that currently exist in GetOutline
 #[derive(Deserialize)]
 pub struct ListEntry {
@@ -31,6 +44,15 @@ pub struct ListEntry {
     pub id: String,
     /// The document's title, as seen in GetOutline
     pub title: String,
+}
+
+impl From<ListEntry> for logic::documents::ListEntry {
+    fn from(value: ListEntry) -> Self {
+        logic::documents::ListEntry {
+            id: value.id,
+            title: value.title,
+        }
+    }
 }
 
 /// Fetch a list of documents available to the current user in GetOutline
@@ -52,4 +74,24 @@ pub fn list(client: &BlockingClient, request: &ListRequest) -> Result<Vec<ListEn
         .map_err(|err| APIError::failed_trying_to("read list of documents in GetOutline", err))?;
 
     Ok(document_envelope.data)
+}
+
+impl DocumentReader for BlockingClient {
+    fn list(
+        &self,
+        list_opts: &ReaderListOptions,
+    ) -> Result<Vec<logic::documents::ListEntry>, ReaderListError> {
+        let request = ListRequest::from(list_opts);
+        list(self, &request)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(logic::documents::ListEntry::from)
+                    .collect()
+            })
+            .map_err(|err| match err.original_error.status() {
+                Some(StatusCode::UNAUTHORIZED) => ReaderListError::BadCredentialsError,
+                _ => ReaderListError::AdapterError(anyhow::Error::new(err)),
+            })
+    }
 }

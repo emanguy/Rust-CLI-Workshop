@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
+use crate::config::Configuration;
 
+pub mod documents;
 pub mod say_hello;
 
 /// A CLI for listing and downloading markdown files from GetOutline
@@ -13,13 +15,18 @@ pub struct CLIArgs {
 pub enum Subcommands {
     /// Say hello either to the world or to someone
     SayHello(say_hello::HelloArgs),
+    Documents(documents::DocumentsArgs),
 }
 
 /// Run the appropriate command based on the parameters
-pub fn exec_command(args: &CLIArgs) {
+pub fn exec_command(args: &CLIArgs, config: &Configuration) {
     match &args.subcommand {
         Subcommands::SayHello(args) => {
             say_hello::exec_say_hello(args);
+        }
+
+        Subcommands::Documents(args) => {
+            documents::exec_documents(args, config);
         }
     }
 }
