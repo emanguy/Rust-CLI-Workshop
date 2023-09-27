@@ -1,8 +1,8 @@
-use get_outline::getoutline_connection;
 use crate::config::Configuration;
+use crate::getoutline_connection;
 use crate::logic::{
     self,
-    documents::{ListError, ListOptions}
+    documents::{ListError, ListOptions},
 };
 
 #[derive(clap::Args)]
@@ -19,21 +19,21 @@ pub enum DocumentsSubcommands {
 
 /// Runs subcommands of "documents"
 pub fn exec_documents(args: &DocumentsArgs, config: &Configuration) {
-   match &args.subcommand {
-       DocumentsSubcommands::List(list_args) => list(list_args, config),
-   }
+    match &args.subcommand {
+        DocumentsSubcommands::List(list_args) => list(list_args, config),
+    }
 }
 
 #[derive(clap::Args)]
 pub struct ListArgs {
     /// The page of results to display
-    #[arg(short, long, default_value_t=0)]
+    #[arg(short, long, default_value_t = 0)]
     page: u32,
     /// The number of documents to show per page
-    #[arg(short, long, default_value_t=15)]
+    #[arg(short, long, default_value_t = 15)]
     results_per_page: u32,
     /// Only show documents you wrote
-    #[arg(short='o', long)]
+    #[arg(short = 'o', long)]
     mine_only: bool,
 }
 

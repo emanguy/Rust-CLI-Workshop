@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use crate::config::Configuration;
+use clap::{Parser, Subcommand};
 
 pub mod documents;
 pub mod say_hello;

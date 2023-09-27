@@ -19,7 +19,7 @@ fn main() {
         Err(error) => {
             println!("{}", error);
             return;
-        },
+        }
     };
 
     // Match the entered command and route execution accordingly
