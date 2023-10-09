@@ -138,7 +138,7 @@ impl DocumentReader for BlockingClient {
                     .collect()
             })
             .map_err(|err| match err.original_error.status() {
-                Some(StatusCode::UNAUTHORIZED) => ReaderListError::BadCredentialsError,
+                Some(StatusCode::UNAUTHORIZED) => ReaderListError::BadCredentials,
                 _ => ReaderListError::AdapterError(anyhow::Error::new(err)),
             })
     }
