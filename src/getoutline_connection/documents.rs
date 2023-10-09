@@ -1,6 +1,8 @@
 use crate::getoutline_connection::{APIError, DataEnvelope};
 use crate::logic;
-use crate::logic::documents::{DocumentReader, ReaderListError, ReaderListOptions};
+use crate::logic::documents::{
+    DocContent, DocRetrieveError, DocumentReader, ReaderListError, ReaderListOptions,
+};
 use reqwest::blocking::Client as BlockingClient;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -76,6 +78,52 @@ pub fn list(client: &BlockingClient, request: &ListRequest) -> Result<Vec<ListEn
     Ok(document_envelope.data)
 }
 
+/// Request sent to GetOutline to retrieve a single document
+#[derive(Serialize)]
+struct RetrieveRequest<'req> {
+    id: &'req str,
+}
+
+/// Response from GetOutline with document content
+#[derive(Deserialize)]
+pub struct RetrieveResponse {
+    pub id: String,
+    pub title: String,
+    pub text: String,
+}
+
+impl From<RetrieveResponse> for DocContent {
+    fn from(value: RetrieveResponse) -> Self {
+        DocContent {
+            id: value.id,
+            title: value.title,
+            text: value.text,
+        }
+    }
+}
+
+/// Hit the GetOutline API to retrieve a single document by ID
+pub fn retrieve_one(client: &BlockingClient, doc_id: &str) -> Result<RetrieveResponse, APIError> {
+    let request = RetrieveRequest { id: doc_id };
+
+    let http_response = client
+        .post("https://app.getoutline.com/api/documents.info")
+        .json(&request)
+        .send()
+        .map_err(|err| {
+            APIError::failed_trying_to("request the content of a document (failed request)", err)
+        })?
+        .error_for_status()
+        .map_err(|err| {
+            APIError::failed_trying_to("request the content of a document (bad status)", err)
+        })?;
+
+    let response: DataEnvelope<RetrieveResponse> = http_response
+        .json()
+        .map_err(|err| APIError::failed_trying_to("parse document content request", err))?;
+    Ok(response.data)
+}
+
 impl DocumentReader for BlockingClient {
     fn list(
         &self,
@@ -92,6 +140,16 @@ impl DocumentReader for BlockingClient {
             .map_err(|err| match err.original_error.status() {
                 Some(StatusCode::UNAUTHORIZED) => ReaderListError::BadCredentialsError,
                 _ => ReaderListError::AdapterError(anyhow::Error::new(err)),
+            })
+    }
+
+    fn retrieve_one(&self, document_id: &str) -> Result<DocContent, DocRetrieveError> {
+        retrieve_one(self, document_id)
+            .map(DocContent::from)
+            .map_err(|err| match err.original_error.status() {
+                Some(StatusCode::UNAUTHORIZED) => DocRetrieveError::BadCredentials,
+                Some(StatusCode::NOT_FOUND) => DocRetrieveError::DocumentNotFound,
+                _ => DocRetrieveError::AdapterError(anyhow::Error::new(err)),
             })
     }
 }

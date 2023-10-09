@@ -1,9 +1,10 @@
 use crate::config::Configuration;
-use crate::getoutline_connection;
 use crate::logic::{
     self,
-    documents::{ListError, ListOptions},
+    documents::{ListError, ListOptions, RetrieveError},
 };
+use crate::{file_saver, getoutline_connection};
+use clap::Args;
 
 #[derive(clap::Args)]
 pub struct DocumentsArgs {
@@ -15,12 +16,15 @@ pub struct DocumentsArgs {
 pub enum DocumentsSubcommands {
     /// List documents that you have access to in GetOutline
     List(ListArgs),
+    /// Fetch a document from GetOutline and save it to disk
+    Save(SaveArgs),
 }
 
 /// Runs subcommands of "documents"
 pub fn exec_documents(args: &DocumentsArgs, config: &Configuration) {
     match &args.subcommand {
         DocumentsSubcommands::List(list_args) => list(list_args, config),
+        DocumentsSubcommands::Save(save_args) => save(save_args, config),
     }
 }
 
@@ -72,5 +76,50 @@ fn list(args: &ListArgs, config: &Configuration) {
                 println!("More detail: {}", err);
             }
         }
+    }
+}
+
+#[derive(Args)]
+pub struct SaveArgs {
+    /// The ID of the document in GetOutline to download to a file
+    doc_id: String,
+    /// The name of the new file to be created (the .md file extension will be appended automatically if you don't add it)
+    #[arg(short, long)]
+    file_name: Option<String>,
+}
+
+/// Runs the "documents save" subcommand
+fn save(args: &SaveArgs, config: &Configuration) {
+    let doc_saver = file_saver::FileDocumentSaver;
+    let client_result = getoutline_connection::get_http_client(&config.get_outline_info.api_key);
+
+    let client = match client_result {
+        Ok(client) => client,
+        Err(error) => {
+            println!("Could not connect to the GetOutline API!");
+            println!("More detail: {}", error);
+            return;
+        }
+    };
+
+    let retrieve_options = logic::documents::RetrieveOptions {
+        suggested_name: args.file_name.clone(),
+    };
+    let doc_result =
+        logic::documents::retrieve(&client, &doc_saver, &args.doc_id, &retrieve_options);
+    match doc_result {
+        Ok(_) => println!("Document saved successfully!"),
+        Err(RetrieveError::BadAuth) => println!("The API token provided was rejected by GetOutline, try generating another one and try again!"),
+        Err(RetrieveError::DocumentDoesNotExist { requested_id}) => println!("GetOutline could not find a document with the ID \"{}\".", requested_id),
+        Err(RetrieveError::DocumentRetrieveFailed(error)) => {
+            println!("Could not fetch the requested document from GetOutline for an unknown reason!!");
+            println!("More information: {}", error);
+        },
+        Err(RetrieveError::DocumentSaveFailed(error)) => {
+            println!("Could not save the document to disk!");
+            println!("More information: {}", error);
+        }
+        Err(RetrieveError::SameNameCouldNotSave { name }) =>
+            println!("A file with the same name already exists (\"{}\"), please suggest a different name using the appropriate flag.", name),
     }
 }

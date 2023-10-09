@@ -35,6 +35,18 @@ pub enum ReaderListError {
     AdapterError(anyhow::Error),
 }
 
+/// Error produced by an implementer of [DocumentReader] which explains why fetching a single
+/// document went awry
+#[derive(Error, Debug)]
+pub enum DocRetrieveError {
+    #[error("Reader credentials did not work")]
+    BadCredentials,
+    #[error("Requested document did not exist")]
+    DocumentNotFound,
+    #[error("Other adapter error occurred: {0}")]
+    AdapterError(anyhow::Error),
+}
+
 /// Options for listing documents for a [DocumentReader]
 pub struct ReaderListOptions {
     pub offset: u32,
@@ -42,11 +54,21 @@ pub struct ReaderListOptions {
     pub user: Option<String>,
 }
 
+/// Raw markdown content of a document
+pub struct DocContent {
+    pub id: String,
+    pub title: String,
+    pub text: String,
+}
+
 /// Something that can read sets of GetOutline documents
 #[automock]
 pub trait DocumentReader {
     /// List documents in GetOutline
     fn list(&self, list_opts: &ReaderListOptions) -> Result<Vec<ListEntry>, ReaderListError>;
+
+    /// Get a specific document from GetOutline
+    fn retrieve_one(&self, document_id: &str) -> Result<DocContent, DocRetrieveError>;
 }
 
 /// Errors that occur when trying to fulfill the "list" business logic
@@ -156,7 +178,7 @@ mod list_tests {
             .returning(|_| Ok(sample_documents()));
 
         let result = list(&auth_reader, &doc_reader, &default_list_opts());
-        assert_that(&result).is_ok();
+        assert_that!(&result).is_ok();
     }
 
     #[test]
@@ -180,7 +202,7 @@ mod list_tests {
                 ..default_list_opts()
             },
         );
-        assert_that(&result).is_ok();
+        assert_that!(&result).is_ok();
     }
 
     #[test]
@@ -203,7 +225,7 @@ mod list_tests {
             },
         );
 
-        assert_that(&result)
+        assert_that!(&result)
             .is_err()
             .matches(|err| matches!(err, ListError::CouldNotGetAuth(_)));
     }
@@ -219,8 +241,314 @@ mod list_tests {
 
         let result = list(&auth_reader, &doc_reader, &default_list_opts());
 
-        assert_that(&result)
+        assert_that!(&result)
             .is_err()
             .matches(|err| matches!(err, ListError::CouldNotListDocuments(_)));
+    }
+}
+
+/// DocumentSaver adapter error reporting a save failure
+#[derive(Error, Debug)]
+pub enum SaveError {
+    #[error("Something with the name \"{name}\" already exists.")]
+    TargetWithSameNameExists { name: String },
+    #[error("Unexpected error happened when saving document: {0}")]
+    AdapterError(anyhow::Error),
+}
+
+/// Something that can save documents from GetOutline
+#[automock]
+pub trait DocumentSaver {
+    /// Save the [content] of a document in a place referenced by [name]
+    fn save_document(&self, content: &str, name: &str) -> Result<(), SaveError>;
+}
+
+/// Options for retrieving a document with [retrieve]
+pub struct RetrieveOptions {
+    pub suggested_name: Option<String>,
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for RetrieveOptions {
+    fn default() -> Self {
+        RetrieveOptions {
+            suggested_name: None,
+        }
+    }
+}
+
+/// Error representing things going wrong when retrieving and saving a document
+#[derive(Error, Debug)]
+pub enum RetrieveError {
+    #[error("There is not a document with the id {requested_id}")]
+    DocumentDoesNotExist { requested_id: String },
+    #[error("The GetOutline credentials provided did not work. Please provide new ones.")]
+    BadAuth,
+    #[error("Failed to retrieve the requested document from GetOutline: {0}")]
+    DocumentRetrieveFailed(anyhow::Error),
+    #[error(
+        "Could not save the requested document, something with the name \"{name}\" already exists!"
+    )]
+    SameNameCouldNotSave { name: String },
+    #[error("Failed to save the file from GetOutline: {0}")]
+    DocumentSaveFailed(anyhow::Error),
+}
+
+/// Retrieve a document from GetOutline and save it. If a name is provided in the [options] without
+/// the ".md" file extension, it will be appended automatically. If a name suggestion isn't provided,
+/// the name of the document in GetOutline will be used.
+pub fn retrieve(
+    reader: &impl DocumentReader,
+    saver: &impl DocumentSaver,
+    document_id: &str,
+    options: &RetrieveOptions,
+) -> Result<(), RetrieveError> {
+    let getout_document_result = reader.retrieve_one(document_id);
+    let getout_document = match getout_document_result {
+        Ok(document) => document,
+        Err(DocRetrieveError::DocumentNotFound) => {
+            return Err(RetrieveError::DocumentDoesNotExist {
+                requested_id: document_id.to_string(),
+            })
+        }
+        Err(DocRetrieveError::BadCredentials) => return Err(RetrieveError::BadAuth),
+        Err(DocRetrieveError::AdapterError(cause)) => {
+            return Err(RetrieveError::DocumentRetrieveFailed(cause))
+        }
+    };
+
+    let mut doc_name = options
+        .suggested_name
+        .as_ref()
+        .cloned()
+        .unwrap_or(getout_document.title);
+    if !doc_name.to_lowercase().ends_with(".md") {
+        doc_name += ".md";
+    }
+
+    let save_result = saver.save_document(&getout_document.text, &doc_name);
+    if let Err(error) = save_result {
+        return match error {
+            SaveError::TargetWithSameNameExists { name } => {
+                Err(RetrieveError::SameNameCouldNotSave { name })
+            }
+            SaveError::AdapterError(cause) => Err(RetrieveError::DocumentSaveFailed(cause)),
+        };
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod retrieve_tests {
+    use super::*;
+    use anyhow::anyhow;
+    use mockall::predicate;
+    use speculoos::assert_that;
+    use speculoos::prelude::*;
+
+    fn retrieved_document() -> DocContent {
+        DocContent {
+            id: "12345".to_string(),
+            title: "My document".to_string(),
+            text: "Hello world!".to_string(),
+        }
+    }
+
+    #[test]
+    fn happy_path_no_rename() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mut mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Ok(retrieved_document()));
+        mock_saver
+            .expect_save_document()
+            .with(
+                predicate::eq("Hello world!"),
+                predicate::eq("My document.md"),
+            )
+            .returning(|_, _| Ok(()));
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result).is_ok();
+    }
+
+    #[test]
+    fn happy_path_with_rename_no_file_ext() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mut mock_saver = MockDocumentSaver::new();
+        let retrieve_opts = RetrieveOptions {
+            suggested_name: Some("New Name".to_string()),
+        };
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Ok(retrieved_document()));
+        mock_saver
+            .expect_save_document()
+            .with(predicate::eq("Hello world!"), predicate::eq("New Name.md"))
+            .returning(|_, _| Ok(()));
+
+        let retrieve_result = retrieve(&mock_reader, &mock_saver, "abc123", &retrieve_opts);
+
+        assert_that!(retrieve_result).is_ok();
+    }
+
+    #[test]
+    fn happy_path_with_file_ext() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mut mock_saver = MockDocumentSaver::new();
+        let retrieve_opts = RetrieveOptions {
+            suggested_name: Some("New Name.Md".to_string()),
+        };
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Ok(retrieved_document()));
+        mock_saver
+            .expect_save_document()
+            .with(predicate::eq("Hello world!"), predicate::eq("New Name.Md"))
+            .returning(|_, _| Ok(()));
+
+        let retrieve_result = retrieve(&mock_reader, &mock_saver, "abc123", &retrieve_opts);
+
+        assert_that!(retrieve_result).is_ok();
+    }
+
+    #[test]
+    fn fails_on_bad_auth() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Err(DocRetrieveError::BadCredentials));
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result)
+            .is_err()
+            .matches(|error| matches!(error, RetrieveError::BadAuth));
+    }
+
+    #[test]
+    fn fails_when_document_doesnt_exist() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Err(DocRetrieveError::DocumentNotFound));
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result)
+            .is_err()
+            .matches(|error| matches!(error, RetrieveError::DocumentDoesNotExist { requested_id } if requested_id == "abc123"));
+    }
+
+    #[test]
+    fn fails_when_document_retrieve_fails() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Err(DocRetrieveError::AdapterError(anyhow!("Whoopsie!"))));
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result)
+            .is_err()
+            .matches(|error| matches!(error, RetrieveError::DocumentRetrieveFailed(_)));
+    }
+
+    #[test]
+    fn fails_when_save_fails() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mut mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Ok(retrieved_document()));
+        mock_saver
+            .expect_save_document()
+            .with(
+                predicate::eq("Hello world!"),
+                predicate::eq("My document.md"),
+            )
+            .returning(|_, _| Err(SaveError::AdapterError(anyhow!("Whoopsie!"))));
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result)
+            .is_err()
+            .matches(|error| matches!(error, RetrieveError::DocumentSaveFailed(_)));
+    }
+
+    #[test]
+    fn fails_on_duplicate_save_name() {
+        let mut mock_reader = MockDocumentReader::new();
+        let mut mock_saver = MockDocumentSaver::new();
+
+        mock_reader
+            .expect_retrieve_one()
+            .with(predicate::eq("abc123"))
+            .returning(|_| Ok(retrieved_document()));
+        mock_saver
+            .expect_save_document()
+            .with(
+                predicate::eq("Hello world!"),
+                predicate::eq("My document.md"),
+            )
+            .returning(|_, _| {
+                Err(SaveError::TargetWithSameNameExists {
+                    name: "My ducument.md".to_string(),
+                })
+            });
+
+        let retrieve_result = retrieve(
+            &mock_reader,
+            &mock_saver,
+            "abc123",
+            &RetrieveOptions::default(),
+        );
+
+        assert_that!(retrieve_result).is_err().matches(|error| matches!(error, RetrieveError::SameNameCouldNotSave { name } if name == "My document.md"));
     }
 }

@@ -4,6 +4,7 @@ use dotenvy::dotenv;
 
 mod command;
 mod config;
+mod file_saver;
 mod getoutline_connection;
 mod logic;
 
