@@ -264,12 +264,12 @@ pub trait DocumentSaver {
 }
 
 /// Options for retrieving a document with [retrieve]
-pub struct RetrieveOptions {
-    pub suggested_name: Option<String>,
+pub struct RetrieveOptions<'refs> {
+    pub suggested_name: Option<&'refs str>,
 }
 
 #[allow(clippy::derivable_impls)]
-impl Default for RetrieveOptions {
+impl<'refs> Default for RetrieveOptions<'refs> {
     fn default() -> Self {
         RetrieveOptions {
             suggested_name: None,
@@ -319,9 +319,8 @@ pub fn retrieve(
 
     let mut doc_name = options
         .suggested_name
-        .as_ref()
-        .cloned()
-        .unwrap_or(getout_document.title);
+        .unwrap_or(getout_document.title.as_str())
+        .to_string();
     if !doc_name.to_lowercase().ends_with(".md") {
         doc_name += ".md";
     }
@@ -387,7 +386,7 @@ mod retrieve_tests {
         let mut mock_reader = MockDocumentReader::new();
         let mut mock_saver = MockDocumentSaver::new();
         let retrieve_opts = RetrieveOptions {
-            suggested_name: Some("New Name".to_string()),
+            suggested_name: Some("New Name"),
         };
 
         mock_reader
@@ -409,7 +408,7 @@ mod retrieve_tests {
         let mut mock_reader = MockDocumentReader::new();
         let mut mock_saver = MockDocumentSaver::new();
         let retrieve_opts = RetrieveOptions {
-            suggested_name: Some("New Name.Md".to_string()),
+            suggested_name: Some("New Name.Md"),
         };
 
         mock_reader

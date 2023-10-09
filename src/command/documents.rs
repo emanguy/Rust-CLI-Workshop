@@ -103,7 +103,7 @@ fn save(args: &SaveArgs, config: &Configuration) {
     };
 
     let retrieve_options = logic::documents::RetrieveOptions {
-        suggested_name: args.file_name.clone(),
+        suggested_name: args.file_name.as_deref(),
     };
     let doc_result =
         logic::documents::retrieve(&client, &doc_saver, &args.doc_id, &retrieve_options);

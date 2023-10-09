@@ -1,5 +1,5 @@
 use crate::logic::documents::{DocumentSaver, SaveError};
-use std::fs::{File};
+use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
@@ -10,15 +10,16 @@ impl DocumentSaver for FileDocumentSaver {
     fn save_document(&self, content: &str, name: &str) -> Result<(), SaveError> {
         let target_path = PathBuf::from(".").join(name);
         if target_path.exists() {
-            return Err(SaveError::TargetWithSameNameExists { name: name.to_string() });
+            return Err(SaveError::TargetWithSameNameExists {
+                name: name.to_string(),
+            });
         }
 
-        let file = File::create(&target_path)
-            .map_err(|err| {
-                SaveError::AdapterError(
-                    anyhow::Error::new(err).context("failed opening file to save document"),
-                )
-            })?;
+        let file = File::create(&target_path).map_err(|err| {
+            SaveError::AdapterError(
+                anyhow::Error::new(err).context("failed opening file to save document"),
+            )
+        })?;
         let mut writer = BufWriter::new(file);
         writer.write_all(content.as_bytes()).map_err(|err| {
             SaveError::AdapterError(anyhow::Error::new(err).context("failed writing bytes to file"))

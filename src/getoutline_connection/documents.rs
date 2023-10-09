@@ -9,17 +9,17 @@ use serde::{Deserialize, Serialize};
 
 /// Request for a list of documents, including pagination information
 #[derive(Serialize)]
-pub struct ListRequest {
+pub struct ListRequest<'refs> {
     /// Pagination offset from the beginning of the results
     pub offset: u32,
     /// Number of results to return per page
     pub limit: u32,
     /// Author of requested documents
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
+    pub user: Option<&'refs str>,
 }
 
-impl Default for ListRequest {
+impl<'refs> Default for ListRequest<'refs> {
     fn default() -> Self {
         ListRequest {
             offset: 0,
@@ -29,12 +29,12 @@ impl Default for ListRequest {
     }
 }
 
-impl From<&ReaderListOptions> for ListRequest {
-    fn from(value: &ReaderListOptions) -> Self {
+impl<'refs> From<&'refs ReaderListOptions> for ListRequest<'refs> {
+    fn from(value: &'refs ReaderListOptions) -> Self {
         ListRequest {
             offset: value.offset,
             limit: value.limit,
-            user: value.user.clone(),
+            user: value.user.as_deref(),
         }
     }
 }
