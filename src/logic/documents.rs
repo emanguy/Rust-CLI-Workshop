@@ -30,7 +30,7 @@ pub struct ListEntry {
 #[derive(Error, Debug)]
 pub enum ReaderListError {
     #[error("Reader credentials did not work")]
-    BadCredentialsError,
+    BadCredentials,
     #[error("Other adapter error occurred: {0}")]
     AdapterError(anyhow::Error),
 }
@@ -111,7 +111,7 @@ pub fn list(
     let documents = doc_reader
         .list(&reader_list_opts)
         .map_err(|err| match err {
-            ReaderListError::BadCredentialsError => ListError::BadCredentials,
+            ReaderListError::BadCredentials => ListError::BadCredentials,
             ReaderListError::AdapterError(err) => ListError::CouldNotListDocuments(
                 err.context("Fetching the list of documents failed"),
             ),
